@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pokémon matchup visualizations</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,800&family=IBM+Plex+Sans:wght@400;500&display=swap">
+<style>
+:root{
+  --bg:#EEF1F5;--surface:#fff;--ink:#1D2633;--muted:#5C6878;--line:#C9D1DC;
+  --red:#D8372B;--blue:#2F5F8F;--accent:#F2C230;
+  --head:'Bricolage Grotesque','Trebuchet MS',system-ui,sans-serif;
+  --body:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
+  box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#151A22;--surface:#1E2530;--ink:#E8ECF2;--muted:#9AA6B6;--line:#334052;--red:#E4473B;--blue:#4F86BC;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#151A22;--surface:#1E2530;--ink:#E8ECF2;--muted:#9AA6B6;--line:#334052;--red:#E4473B;--blue:#4F86BC;color-scheme:dark}
+html{scroll-padding-top:env(safe-area-inset-top,0px);height:100%}
+*,*::before,*::after{box-sizing:inherit}
+body{margin:0;height:100%;background:var(--bg);color:var(--ink);font:400 1rem/1.5 var(--body)}
+#app{height:100%}
+h1,h2{font-family:var(--head);margin:0;line-height:1.05}
+a{color:inherit;text-decoration:none}
+:focus-visible{outline:3px solid var(--accent);outline-offset:3px}
+
+/* Hub: two halves meeting at a Poké Ball seam */
+.hub{height:100%;display:flex;position:relative}
+.hub-title{position:absolute;top:1.25rem;left:1.5rem;z-index:2;color:#fff;font:800 1.1rem/1.2 var(--head);pointer-events:none}
+.half{flex:1;display:flex;flex-direction:column;justify-content:flex-end;gap:.6rem;padding:2rem clamp(1.5rem,5vw,4rem);color:#fff;transition:flex-grow .35s ease}
+.half:hover,.half:focus-visible{flex-grow:1.35}
+.half.plain{background:var(--red)}
+.half.spec{background:var(--blue);text-align:right;align-items:flex-end}
+.half h2{font-size:clamp(2rem,5vw,4rem);font-weight:800;max-width:10ch}
+.half p{margin:0 0 2rem;max-width:30ch;opacity:.92}
+.ball{position:absolute;left:50%;top:50%;width:128px;height:128px;margin:-64px 0 0 -64px;pointer-events:none;z-index:1;filter:drop-shadow(0 3px 6px rgba(0,0,0,.35));transition:left .35s ease,top .35s ease}
+/* The halves resize on hover, so the ball rides the seam: 1.35 / 2.35 = 57.4% */
+.hub:has(.plain:hover,.plain:focus-visible) .ball{left:57.4%}
+.hub:has(.spec:hover,.spec:focus-visible) .ball{left:42.6%}
+
+/* Shared pages */
+.page{height:100%;display:flex;flex-direction:column;padding:1rem clamp(1rem,3vw,2rem)}
+.bar{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:1rem;padding-bottom:.75rem}
+.bar .mid{text-align:center}
+.bar .mid h1{font-size:clamp(1.4rem,3vw,2rem);font-weight:800}
+.bar .mid a{color:var(--muted);font-size:.9rem;text-decoration:underline}
+.bar .right{justify-self:end}
+.btn{display:inline-flex;align-items:center;gap:.4rem;padding:.55rem 1rem;border:2px solid var(--ink);border-radius:999px;
+  background:var(--surface);color:var(--ink);font:500 .95rem var(--body);cursor:pointer}
+.btn:hover:not([aria-disabled="true"]){background:var(--ink);color:var(--bg)}
+.btn[aria-disabled="true"]{opacity:.35;cursor:default}
+
+/* Matchup list */
+.grid{flex:1;display:grid;grid-template-columns:repeat(5,minmax(0,200px));gap:1rem;align-content:center;justify-content:center;width:100%;margin:0 auto;padding:1rem 0 2rem}
+.tile{aspect-ratio:3/2;white-space:nowrap;display:flex;align-items:center;justify-content:center;padding:1rem;border-radius:14px;background:var(--surface);
+  border:2px solid var(--line);font:800 1.4rem/1.1 var(--head);transition:border-color .15s,transform .15s}
+.tile:hover{border-color:var(--red);transform:translateY(-3px)}
+@media (max-width:700px){.grid{grid-template-columns:repeat(2,minmax(0,200px))}}
+
+/* Matchup view */
+.tabs{display:flex;gap:.25rem;border-bottom:2px solid var(--line)}
+.tab{padding:.6rem 1.1rem;border:0;border-bottom:4px solid transparent;margin-bottom:-2px;background:none;color:var(--muted);font:500 1rem var(--body);cursor:pointer}
+.tab[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--red);font-weight:500}
+.stage{flex:1;min-height:0;margin-top:1rem;background:var(--surface);border:2px solid var(--line);border-radius:14px;overflow:auto}
+.stage svg{width:100%;height:100%;display:block}
+.stage text{fill:var(--muted);font-family:var(--body)}
+.soon{flex:1;display:grid;place-content:center;text-align:center;gap:.5rem;color:var(--muted)}
+.soon h2{color:var(--ink);font-size:2rem}
+.teams{display:grid;grid-template-columns:1fr 1fr;gap:1.25rem 4.5rem;padding:1.25rem}
+.team h2{font-size:1.3rem;margin-bottom:.6rem}
+.roster{display:grid;grid-template-columns:repeat(2,max-content);justify-content:start;align-items:start;gap:.6rem}
+.mon{background:#8F1D2C;color:#fff;border-radius:6px 20px 6px 6px;padding:.55rem .6rem;max-width:26rem}
+.mon header{display:flex;flex-wrap:nowrap;justify-content:space-between;align-items:center;gap:.4rem;margin-bottom:.4rem}
+.mon h3{margin:0;white-space:nowrap;margin-right:auto;font:800 .95rem/1.1 var(--head);text-transform:uppercase}
+.chips{display:flex;gap:.25rem;justify-content:center}
+.side{display:grid;justify-items:center;gap:.4rem}
+.chip{display:inline-grid;place-items:center;min-width:1.4rem;height:1.2rem;padding:0 .25rem;border-radius:4px;background:#566;color:#fff;font:700 .65rem var(--body)}
+.ticon{width:1.35rem;height:1.35rem;flex:none;display:block}
+.iicon{width:1.3rem;height:1.3rem;margin-left:.2rem}
+.mon-body{display:grid;grid-template-columns:9.1rem auto;gap:.5rem;align-items:center}
+.pills{display:flex;flex-wrap:wrap;gap:.25rem;margin-bottom:.35rem}
+.pills span{white-space:nowrap;line-height:1.2;display:inline-flex;align-items:center;background:#fff;color:#7a1624;border-radius:999px;padding:.05rem .5rem;font-size:.72rem;font-weight:500}
+.mon ul{list-style:none;margin:0;padding:0;display:grid;gap:.2rem;width:100%}
+.mon li{white-space:nowrap;display:flex;align-items:center;gap:.35rem;background:#fff;color:#2b1418;border-radius:4px;padding:.1rem .3rem;font-size:.78rem;font-weight:500}
+.sprite{position:relative;width:92px;height:92px;border-radius:50%;display:grid;place-items:center;font:800 1.8rem var(--head);color:#fff;text-shadow:0 2px 3px #0006;overflow:hidden;border:3px solid #fff}
+.sprite img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
+.sprite.ok span{display:none}
+.note{grid-column:1/-1;margin:0;color:var(--muted)}
+.tlist{list-style:none;margin:0;padding:0;display:grid;gap:.5rem}
+.trow{display:grid;grid-template-columns:64px 10.5rem 4.5rem 4.5rem;align-items:center;gap:.6rem;width:fit-content;padding:.5rem .7rem;background:#8F1D2C;color:#fff;border-radius:6px 16px 6px 6px}
+.trow.thead{background:none;color:var(--muted);padding-block:0}
+.thead b{text-align:center;font-weight:500;font-size:.85rem}
+.trow .sprite{width:58px;height:58px;border-width:2px;font-size:1.2rem}
+.trow strong{font:800 .95rem var(--head)}
+.trow .chips{justify-content:flex-start;margin-top:.25rem}
+.score{text-align:center;background:#fff;color:#000;border-radius:6px;padding:.3rem .4rem;font:800 1.1rem var(--head)}
+.score.pos{color:#1B7F3A}
+.score.neg{color:#C62828}
+.score.zero{color:#000}
+.rank{font:500 .68rem var(--body);background:#fff;color:#7a1624;border-radius:999px;padding:.05rem .45rem;white-space:nowrap}
+.role{font:500 .68rem var(--body);background:#ffffff26;color:#fff;border:1px solid #fff8;border-radius:999px;padding:.05rem .45rem;white-space:nowrap}
+.star{font-size:.9rem;line-height:1;margin-left:.3rem}.star.b{color:#2F7DE1}.star.y{color:#E8A800}
+.keynote .star{margin:0 .15rem}.keynote{padding:.2rem .9rem 0}
+.rank.low{background:#ffffff40;color:#fff}
+.nctl{display:flex;flex-wrap:wrap;align-items:center;gap:.4rem;padding:.8rem 1rem 0}
+.nctl>span{color:var(--muted);font-size:.9rem;margin-right:.2rem}
+.cbtn{padding:.3rem .8rem;border:2px solid var(--ink);border-radius:999px;background:var(--surface);color:var(--ink);font:500 .85rem var(--body);cursor:pointer}
+.cbtn[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
+.nodewrap{position:relative;width:100%;max-width:1000px;aspect-ratio:16/9;margin:0 auto}
+.nodewrap svg{position:absolute;inset:0;width:100%;height:100%}
+.nodewrap .lbl text{fill:var(--ink)}
+.nnode{position:absolute;transform:translate(-50%,-50%);text-align:center;width:130px}
+.nnode .sprite{width:78px;height:78px;margin:0 auto;border-color:var(--line)}
+.nnode.sel .sprite{border-color:var(--red)}
+.nnode.dim{opacity:.35}
+.nlabel{font:800 .85rem/1.1 var(--head);margin-top:.25rem}
+.legend{padding:0 1rem 1rem;color:var(--muted);font-size:.9rem;display:grid;gap:.3rem}
+.legend b{display:inline-block;width:2rem;height:0;border-top:6px solid #D8372B;vertical-align:middle;margin-right:.3rem;border-radius:3px}
+.legend b.thin{border-top:2px solid #8A97AA}
+.legend b.max{box-shadow:0 0 0 4px #F2C23099}
+.dot{display:inline-block;width:.7rem;height:.7rem;border-radius:50%;margin-right:.35rem;vertical-align:-1px}
+.nodewrap .lbl text.max{fill:#1D2633}
+.nbody{display:flex;gap:1rem;align-items:flex-start;padding:.5rem 1rem 0}
+.nbody .nodewrap{flex:1;min-width:0;max-width:none;margin:0}
+.cpanel{width:300px;flex:none;padding:.7rem;border:2px solid var(--line);border-radius:12px}
+.cpanel h3{margin:0 0 .4rem;font:800 1rem var(--head)}
+.crow{display:flex;align-items:center;justify-content:space-between;gap:.5rem;padding:.15rem 0;border-top:1px solid var(--line)}
+.crow.chead{border-top:0}
+.ccells{display:flex;position:relative}
+.ccell,.hcell{width:34px;height:30px;display:grid;place-items:center}
+.hcell .sprite{width:28px;height:28px;border-width:2px;font-size:.75rem}
+.cbar{position:absolute;top:50%;height:4px;margin-top:-2px;border-radius:2px;opacity:.55}
+.cdot{position:relative;z-index:1;width:16px;height:16px;border-radius:50%;box-shadow:0 0 0 2px var(--surface)}
+.cpct{font:800 .75rem/1.1 var(--head);text-align:right;white-space:nowrap}
+.cnone,.cnote{margin:.5rem 0 0;color:var(--muted);font-size:.8rem}
+@media (max-width:900px){.nbody{flex-direction:column}.cpanel{width:100%}}
+@media (max-width:1100px){.teams{grid-template-columns:1fr}}
+@media (max-width:560px){.roster{grid-template-columns:1fr}}
+@media (max-width:560px){.hub{flex-direction:column}.hub:has(.plain:hover,.plain:focus-visible) .ball{left:50%;top:57.4%}.hub:has(.spec:hover,.spec:focus-visible) .ball{left:50%;top:42.6%}.half.spec{text-align:left;align-items:flex-start}.half{justify-content:center}.hub-title{top:.75rem}.ball{width:84px;height:84px;margin:-42px 0 0 -42px}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+/* ---------- Data hooks: replace these when the real data arrives ---------- */
+const MATCHUPS = Array.from({length:10}, (_, i) => ({id:i+1, title:'Matchup '+(i+1)}));
+
+/* mon(name, 'Type/Type', ability, item, 'Move:Type,Move:Type,...'). Add a sprite: {...mon(...), sprite:'data:image/png;base64,...'} */
+const mon = (name, types, ability, item, moves, file) => ({name, file, types:types.split('/'), ability, item, moves:moves.split(',').map(s => s.split(':'))});
+MATCHUPS[0].teams = {
+  mine: [
+    mon('Aerodactyl','Rock/Flying','Unnerve / Tough Claws','Aerodactylite','Protect:Normal,Rock Slide:Rock,Dual Wingbeat:Flying,Tailwind:Flying'),
+    mon('Delphox','Fire/Psychic','Blaze / Levitate','Delphoxite','Protect:Normal,Heat Wave:Fire,Psychic:Psychic,Calm Mind:Psychic'),
+    mon('Alolan Ninetales','Ice/Fairy','Snow Warning','Never-Melt Ice','Protect:Normal,Blizzard:Ice,Freeze-Dry:Ice,Encore:Normal'),
+    mon('Clefable','Fairy','Unaware','Sitrus Berry','Protect:Normal,Helping Hand:Normal,Follow Me:Normal,Moonblast:Fairy'),
+    mon('Kingambit','Dark/Steel','Defiant','Black Glasses','Protect:Normal,Swords Dance:Normal,Kowtow Cleave:Dark,Sucker Punch:Dark'),
+    mon('Sneasler','Fighting/Poison','Unburden','White Herb','Protect:Normal,Fake Out:Normal,Close Combat:Fighting,Dire Claw:Poison')
+  ],
+  opp: [
+    mon('Charizard','Fire/Flying','Blaze / Drought','Charizardite Y','Heat Wave:Fire,Solar Beam:Grass,Weather Ball:Normal,Protect:Normal'),
+    mon('Basculegion (Male)','Water/Ghost','Adaptability','Mystic Water','Wave Crash:Water,Last Respects:Ghost,Aqua Jet:Water,Protect:Normal'),
+    mon('Garchomp','Dragon/Ground','Rough Skin','Sitrus Berry','Earthquake:Ground,Dragon Claw:Dragon,Rock Tomb:Rock,Protect:Normal'),
+    mon('Glimmora','Rock/Poison','Toxic Debris','Focus Sash','Sludge Bomb:Poison,Power Gem:Rock,Earth Power:Ground,Spiky Shield:Grass'),
+    mon('Kingambit','Dark/Steel','Defiant','Chople Berry','Kowtow Cleave:Dark,Iron Head:Steel,Sucker Punch:Dark,Protect:Normal'),
+    mon('Whimsicott','Grass/Fairy','Prankster','Fairy Feather','Moonblast:Fairy,Tailwind:Flying,Encore:Normal,Protect:Normal')
+  ]
+};
+
+MATCHUPS[1].teams = {
+  mine: [
+    mon('Aerodactyl','Rock/Flying','Unnerve / Tough Claws','Aerodactylite','Rock Slide:Rock,Dual Wingbeat:Flying,Tailwind:Flying,Wide Guard:Rock'),
+    mon('Charizard','Fire/Flying','Blaze / Drought','Charizardite Y','Heat Wave:Fire,Weather Ball:Normal,Solar Beam:Grass,Protect:Normal'),
+    mon('Basculegion (Male)','Water/Ghost','Adaptability','Focus Sash','Liquidation:Water,Last Respects:Ghost,Aqua Jet:Water,Protect:Normal'),
+    mon('Garchomp','Dragon/Ground','Rough Skin','Choice Scarf','Earthquake:Ground,Dragon Claw:Dragon,Rock Slide:Rock,Stomping Tantrum:Ground'),
+    mon('Kingambit','Dark/Steel','Defiant','Chople Berry','Kowtow Cleave:Dark,Iron Head:Steel,Low Kick:Fighting,Sucker Punch:Dark'),
+    mon('Sylveon','Fairy','Pixilate','Fairy Feather','Hyper Voice:Normal,Hyper Beam:Normal,Quick Attack:Normal,Detect:Fighting')
+  ],
+  opp: [
+    mon('Delphox','Fire/Psychic','Blaze / Levitate','Delphoxite','Heat Wave:Fire,Psychic:Psychic,Nasty Plot:Dark,Protect:Normal'),
+    mon('Floette (Eternal Flower)','Fairy','Flower Veil / Fairy Aura','Floettite','Moonblast:Fairy,Draining Kiss:Fairy,Calm Mind:Psychic,Protect:Normal'),
+    mon('Incineroar','Fire/Dark','Intimidate','Passho Berry','Parting Shot:Dark,Fake Out:Normal,Throat Chop:Dark,Flare Blitz:Fire'),
+    mon('Maushold','Normal','Friend Guard','Chople Berry','Follow Me:Normal,Helping Hand:Normal,Feint:Normal,Protect:Normal'),
+    mon('Sinistcha','Grass/Ghost','Hospitality','Kasib Berry','Matcha Gotcha:Grass,Rage Powder:Bug,Life Dew:Water,Protect:Normal'),
+    mon('Vivillon','Bug/Flying','Compound Eyes','Choice Scarf','Sleep Powder:Grass,Hurricane:Flying,Rage Powder:Bug,Pollen Puff:Bug')
+  ]
+};
+
+MATCHUPS[2].teams = {
+  mine: [
+    mon('Delphox','Fire/Psychic','Blaze / Levitate','Delphoxite','Heat Wave:Fire,Psyshock:Psychic,Substitute:Normal,Protect:Normal'),
+    mon('Floette (Eternal Flower)','Fairy','Flower Veil / Fairy Aura','Floettite','Draining Kiss:Fairy,Dazzling Gleam:Fairy,Calm Mind:Psychic,Protect:Normal'),
+    mon('Basculegion (Male)','Water/Ghost','Adaptability','Focus Sash','Protect:Normal,Liquidation:Water,Last Respects:Ghost,Aqua Jet:Water'),
+    mon('Incineroar','Fire/Dark','Intimidate','Sitrus Berry','Fake Out:Normal,Parting Shot:Dark,Helping Hand:Normal,Flare Blitz:Fire'),
+    mon('Sinistcha','Grass/Ghost','Hospitality','Kasib Berry','Matcha Gotcha:Grass,Rage Powder:Bug,Life Dew:Water,Trick Room:Psychic'),
+    mon('Sneasler','Fighting/Poison','Unburden','White Herb','Protect:Normal,Fake Out:Normal,Dire Claw:Poison,Close Combat:Fighting')
+  ],
+  opp: [
+    mon('Charizard','Fire/Flying','Blaze / Drought','Charizardite Y','Heat Wave:Fire,Weather Ball:Normal,Solar Beam:Grass,Protect:Normal'),
+    mon('Floette (Eternal Flower)','Fairy','Flower Veil / Fairy Aura','Floettite','Moonblast:Fairy,Dazzling Gleam:Fairy,Light of Ruin:Fairy,Protect:Normal'),
+    mon('Garchomp','Dragon/Ground','Rough Skin','Roseli Berry','Poison Jab:Poison,Earthquake:Ground,Rock Slide:Rock,Dragon Claw:Dragon'),
+    mon('Kingambit','Dark/Steel','Defiant','Chople Berry','Kowtow Cleave:Dark,Iron Head:Steel,Sucker Punch:Dark,Protect:Normal'),
+    mon('Kleavor','Bug/Rock','Sharpness','Choice Scarf','Stone Axe:Rock,Close Combat:Fighting,Rock Slide:Rock,X-Scissor:Bug'),
+    mon('Whimsicott','Grass/Fairy','Prankster','Focus Sash','Protect:Normal,Moonblast:Fairy,Encore:Normal,Tailwind:Flying')
+  ]
+};
+
+MATCHUPS[3].teams = {
+  mine: [
+    mon('Charizard','Fire/Flying','Blaze / Drought','Charizardite Y','Heat Wave:Fire,Weather Ball:Normal,Solar Beam:Grass,Protect:Normal'),
+    mon('Basculegion (Male)','Water/Ghost','Adaptability','Focus Sash','Liquidation:Water,Last Respects:Ghost,Aqua Jet:Water,Protect:Normal'),
+    mon('Garchomp','Dragon/Ground','Rough Skin','Roseli Berry','Dragon Claw:Dragon,Stomping Tantrum:Ground,Stone Edge:Rock,Protect:Normal'),
+    mon('Kingambit','Dark/Steel','Defiant','Black Glasses','Kowtow Cleave:Dark,Sucker Punch:Dark,Swords Dance:Normal,Protect:Normal'),
+    mon('Sneasler','Fighting/Poison','Unburden','White Herb','Close Combat:Fighting,Dire Claw:Poison,Fake Out:Normal,Protect:Normal'),
+    mon('Whimsicott','Grass/Fairy','Prankster','Kebia Berry','Moonblast:Fairy,Encore:Normal,Tailwind:Flying,Protect:Normal')
+  ],
+  opp: [
+    mon('Dragonite','Dragon/Flying','Multiscale / Multiscale','Dragoninite','Protect:Normal,Dragon Pulse:Dragon,Hurricane:Flying,Extreme Speed:Normal'),
+    mon('Scovillain','Grass/Fire','Moody / Spicy Spray','Scovillainite','Protect:Normal,Leech Seed:Grass,Rage Powder:Bug,Overheat:Fire'),
+    mon('Archaludon','Steel/Dragon','Stamina','Leftovers','Protect:Normal,Electro Shot:Electric,Dragon Pulse:Dragon,Flash Cannon:Steel'),
+    mon('Espathra','Psychic','Speed Boost','Sitrus Berry','Protect:Normal,Lumina Crash:Psychic,Calm Mind:Psychic,Baton Pass:Normal'),
+    mon('Politoed','Water','Drizzle','Mystic Water','Protect:Normal,Muddy Water:Water,Weather Ball:Normal,Ice Beam:Ice'),
+    mon('Sneasler','Fighting/Poison','Unburden','Focus Sash','Protect:Normal,Close Combat:Fighting,Fake Out:Normal,Dire Claw:Poison')
+  ]
+};
+
+MATCHUPS[4].teams = {
+  mine: [
+    mon('Charizard','Fire/Flying','Blaze / Drought','Charizardite Y','Heat Wave:Fire,Solar Beam:Grass,Weather Ball:Normal,Protect:Normal'),
+    mon('Floette (Eternal Flower)','Fairy','Flower Veil / Fairy Aura','Floettite','Light of Ruin:Fairy,Moonblast:Fairy,Dazzling Gleam:Fairy,Protect:Normal'),
+    mon('Basculegion (Male)','Water/Ghost','Adaptability','Focus Sash','Liquidation:Water,Last Respects:Ghost,Aqua Jet:Water,Protect:Normal'),
+    mon('Garchomp','Dragon/Ground','Rough Skin','Sitrus Berry','Earthquake:Ground,Dragon Claw:Dragon,Rock Slide:Rock,Protect:Normal'),
+    mon('Kingambit','Dark/Steel','Defiant','Black Glasses','Kowtow Cleave:Dark,Sucker Punch:Dark,Low Kick:Fighting,Protect:Normal'),
+    mon('Whimsicott','Grass/Fairy','Prankster','Fairy Feather','Moonblast:Fairy,Tailwind:Flying,Encore:Normal,Protect:Normal')
+  ],
+  opp: [
+    mon('Floette (Eternal Flower)','Fairy','Flower Veil / Fairy Aura','Floettite','Protect:Normal,Moonblast:Fairy,Calm Mind:Psychic,Draining Kiss:Fairy'),
+    mon('Ceruledge','Fire/Ghost','Flash Fire','Colbur Berry','Protect:Normal,Shadow Sneak:Ghost,Bitter Blade:Fire,Bulk Up:Fighting'),
+    mon('Incineroar','Fire/Dark','Intimidate','Sitrus Berry','Fake Out:Normal,Throat Chop:Dark,Flare Blitz:Fire,Parting Shot:Dark'),
+    mon('Milotic','Water','Competitive','Leftovers','Hypnosis:Psychic,Coil:Poison,Protect:Normal,Muddy Water:Water'),
+    mon('Sinistcha','Grass/Ghost','Hospitality','Kasib Berry','Protect:Normal,Matcha Gotcha:Grass,Rage Powder:Bug,Life Dew:Water'),
+    mon('Vivillon','Bug/Flying','Compound Eyes','Focus Sash','Sleep Powder:Grass,Protect:Normal,Hurricane:Flying,Rage Powder:Bug')
+  ]
+};
+
+MATCHUPS[5].teams = {
+  mine: [
+    mon('Gengar','Ghost/Poison','Cursed Body / Shadow Tag','Gengarite','Protect:Normal,Sludge Bomb:Poison,Shadow Ball:Ghost,Disable:Normal','GengarMega'),
+    mon('Alolan Ninetales','Ice/Fairy','Snow Warning','Focus Sash','Protect:Normal,Blizzard:Ice,Encore:Normal,Aurora Veil:Ice'),
+    mon('Dragonite','Dragon/Flying','Multiscale','Dragon Fang','Protect:Normal,Dragon Claw:Dragon,Extreme Speed:Normal,Low Kick:Fighting','Dragonite'),
+    mon('Hisuian Samurott','Water/Dark','Sharpness','Choice Scarf','Night Slash:Dark,Aqua Cutter:Water,Sacred Sword:Fighting,Flip Turn:Water','SamurottHisui'),
+    mon('Incineroar','Fire/Dark','Intimidate','Sitrus Berry','Flare Blitz:Fire,Darkest Lariat:Dark,Fake Out:Normal,Parting Shot:Dark'),
+    mon('Sneasler','Fighting/Poison','Unburden','White Herb','Dire Claw:Poison,Close Combat:Fighting,Fake Out:Normal,Rock Tomb:Rock')
+  ],
+  opp: [
+    mon('Tyranitar','Rock/Dark','Sand Stream / Sand Stream','Tyranitarite','Rock Slide:Rock,Knock Off:Dark,Low Kick:Fighting,Protect:Normal','TyranitarMega'),
+    mon('Corviknight','Flying/Steel','Mirror Armor','Leftovers','Brave Bird:Flying,Roost:Flying,Bulk Up:Fighting,Tailwind:Flying'),
+    mon('Excadrill','Ground/Steel','Sand Rush','Focus Sash','Earthquake:Ground,Iron Head:Steel,Rock Slide:Rock,Protect:Normal'),
+    mon('Hydreigon','Dark/Dragon','Levitate','Haban Berry','Dark Pulse:Dark,Snarl:Dark,Draco Meteor:Dragon,Protect:Normal'),
+    mon('Mimikyu','Ghost/Fairy','Disguise','Spell Tag','Shadow Claw:Ghost,Shadow Sneak:Ghost,Play Rough:Fairy,Protect:Normal'),
+    mon('Rotom Wash','Electric/Water','Levitate','Sitrus Berry','Thunderbolt:Electric,Will-O-Wisp:Fire,Hydro Pump:Water,Protect:Normal','RotomWash')
+  ]
+};
+
+MATCHUPS[6].teams = {
+  mine: [
+    mon('Floette (Eternal Flower)','Fairy','Flower Veil / Fairy Aura','Floettite','Light of Ruin:Fairy,Moonblast:Fairy,Dazzling Gleam:Fairy,Protect:Normal'),
+    mon('Tyranitar','Rock/Dark','Sand Stream / Sand Stream','Tyranitarite','Knock Off:Dark,Rock Slide:Rock,Low Kick:Fighting,Protect:Normal','TyranitarMega'),
+    mon('Basculegion (Male)','Water/Ghost','Adaptability','Mystic Water','Wave Crash:Water,Last Respects:Ghost,Aqua Jet:Water,Protect:Normal'),
+    mon('Corviknight','Flying/Steel','Mirror Armor','Sitrus Berry','Brave Bird:Flying,Body Press:Fighting,Tailwind:Flying,Roost:Flying'),
+    mon('Garchomp','Dragon/Ground','Sand Veil','Choice Scarf','Earthquake:Ground,Dragon Claw:Dragon,Rock Slide:Rock,Stomping Tantrum:Ground'),
+    mon('Gengar','Ghost/Poison','Cursed Body','Focus Sash','Sludge Bomb:Poison,Shadow Ball:Ghost,Icy Wind:Ice,Protect:Normal')
+  ],
+  opp: [
+    mon('Dragonite','Dragon/Flying','Multiscale / Multiscale','Dragoninite','Dragon Pulse:Dragon,Flamethrower:Fire,Extreme Speed:Normal,Protect:Normal'),
+    mon('Froslass','Ice/Ghost','Cursed Body / Snow Warning','Froslassite','Blizzard:Ice,Shadow Ball:Ghost,Aurora Veil:Ice,Protect:Normal','FroslassMega'),
+    mon('Garchomp','Dragon/Ground','Rough Skin','Sitrus Berry','Dragon Claw:Dragon,Earthquake:Ground,Rock Slide:Rock,Protect:Normal'),
+    mon('Kingambit','Dark/Steel','Defiant','Chople Berry','Sucker Punch:Dark,Kowtow Cleave:Dark,Iron Head:Steel,Protect:Normal'),
+    mon('Palafin (Hero Form)','Water','Zero to Hero','Leftovers','Jet Punch:Water,Wave Crash:Water,Bulk Up:Fighting,Protect:Normal','PalafinHero'),
+    mon('Sneasler','Fighting/Poison','Unburden','Focus Sash','Fake Out:Normal,Dire Claw:Poison,Close Combat:Fighting,Coaching:Fighting')
+  ]
+};
+
+MATCHUPS[7].teams = {
+  mine: [
+    mon('Scovillain','Grass/Fire','Moody / Spicy Spray','Scovillainite','Flamethrower:Fire,Giga Drain:Grass,Rage Powder:Bug,Protect:Normal'),
+    mon('Archaludon','Steel/Dragon','Stamina','Leftovers','Dragon Pulse:Dragon,Flash Cannon:Steel,Electro Shot:Electric,Protect:Normal'),
+    mon('Espathra','Psychic','Speed Boost','Colbur Berry','Lumina Crash:Psychic,Calm Mind:Psychic,Baton Pass:Normal,Protect:Normal'),
+    mon('Incineroar','Fire/Dark','Intimidate','Charcoal','Fake Out:Normal,Flare Blitz:Fire,Throat Chop:Dark,Parting Shot:Dark'),
+    mon('Politoed','Water','Drizzle','Choice Scarf','Weather Ball:Normal,Muddy Water:Water,Ice Beam:Ice,Icy Wind:Ice'),
+    mon('Sylveon','Fairy','Pixilate','Fairy Feather','Hyper Voice:Normal,Moonblast:Fairy,Psych Up:Normal,Protect:Normal')
+  ],
+  opp: [
+    mon('Steelix','Steel/Ground','Sturdy / Sand Force','Steelixite','Protect:Normal,Heavy Slam:Steel,High Horsepower:Ground,Wide Guard:Rock','SteelixMega'),
+    mon('Tyranitar','Rock/Dark','Sand Stream / Sand Stream','Tyranitarite','Protect:Normal,Rock Slide:Rock,Knock Off:Dark,Dragon Dance:Dragon','TyranitarMega'),
+    mon('Rotom Wash','Electric/Water','Levitate','Leftovers','Will-O-Wisp:Fire,Thunderbolt:Electric,Hydro Pump:Water,Light Screen:Psychic','RotomWash'),
+    mon('Sinistcha','Grass/Ghost','Hospitality','Sitrus Berry','Rage Powder:Bug,Trick Room:Psychic,Matcha Gotcha:Grass,Protect:Normal'),
+    mon('Sneasler','Fighting/Poison','Unburden','White Herb','Protect:Normal,Close Combat:Fighting,Dire Claw:Poison,Fake Out:Normal'),
+    mon('Talonflame','Fire/Flying','Gale Wings','Sharp Beak','Protect:Normal,Brave Bird:Flying,Flare Blitz:Fire,Swords Dance:Normal')
+  ]
+};
+
+MATCHUPS[8].teams = {
+  mine: [
+    mon('Charizard','Fire/Flying','Solar Power / Drought','Charizardite Y','Heat Wave:Fire,Weather Ball:Normal,Solar Beam:Grass,Protect:Normal'),
+    mon('Floette (Eternal Flower)','Fairy','Flower Veil / Fairy Aura','Floettite','Moonblast:Fairy,Dazzling Gleam:Fairy,Light of Ruin:Fairy,Protect:Normal'),
+    mon('Basculegion (Male)','Water/Ghost','Adaptability','Mystic Water','Last Respects:Ghost,Wave Crash:Water,Aqua Jet:Water,Protect:Normal'),
+    mon('Garchomp','Dragon/Ground','Rough Skin','Sitrus Berry','Dragon Claw:Dragon,Earthquake:Ground,Rock Slide:Rock,Protect:Normal'),
+    mon('Kingambit','Dark/Steel','Defiant','Chople Berry','Kowtow Cleave:Dark,Iron Head:Steel,Low Kick:Fighting,Sucker Punch:Dark'),
+    mon('Whimsicott','Grass/Fairy','Prankster','Focus Sash','Moonblast:Fairy,Tailwind:Flying,Encore:Normal,Protect:Normal')
+  ],
+  opp: [
+    mon('Charizard','Fire/Flying','Blaze / Drought','Charizardite Y','Heat Wave:Fire,Solar Beam:Grass,Weather Ball:Normal,Protect:Normal'),
+    mon('Aerodactyl','Rock/Flying','Unnerve','Focus Sash','Rock Slide:Rock,Protect:Normal,Tailwind:Flying,Wide Guard:Rock','Aerodactyl'),
+    mon('Farigiraf','Normal/Psychic','Armor Tail','Sitrus Berry','Psychic:Psychic,Helping Hand:Normal,Trick Room:Psychic,Protect:Normal'),
+    mon('Garchomp','Dragon/Ground','Rough Skin','Roseli Berry','Earthquake:Ground,Dragon Claw:Dragon,Protect:Normal,Stomping Tantrum:Ground'),
+    mon('Incineroar','Fire/Dark','Intimidate','Charcoal','Flare Blitz:Fire,Darkest Lariat:Dark,Fake Out:Normal,Parting Shot:Dark'),
+    mon('Sylveon','Fairy','Pixilate','Fairy Feather','Hyper Voice:Normal,Quick Attack:Normal,Detect:Fighting,Yawn:Normal')
+  ]
+};
+
+MATCHUPS[9].teams = {
+  mine: [
+    mon('Delphox','Fire/Psychic','Blaze / Levitate','Delphoxite','Heat Wave:Fire,Psyshock:Psychic,Nasty Plot:Dark,Protect:Normal'),
+    mon('Floette (Eternal Flower)','Fairy','Flower Veil / Fairy Aura','Floettite','Moonblast:Fairy,Dazzling Gleam:Fairy,Calm Mind:Psychic,Protect:Normal'),
+    mon('Incineroar','Fire/Dark','Intimidate','Sitrus Berry','Flare Blitz:Fire,Throat Chop:Dark,Parting Shot:Dark,Fake Out:Normal'),
+    mon('Kingambit','Dark/Steel','Defiant','Black Glasses','Sucker Punch:Dark,Kowtow Cleave:Dark,Protect:Normal,Swords Dance:Normal'),
+    mon('Sinistcha','Grass/Ghost','Hospitality','Kasib Berry','Matcha Gotcha:Grass,Rage Powder:Bug,Trick Room:Psychic,Protect:Normal'),
+    mon('Sneasler','Fighting/Poison','Poison Touch','Focus Sash','Close Combat:Fighting,Dire Claw:Poison,Fake Out:Normal,Quick Guard:Fighting')
+  ],
+  opp: [
+    mon('Dragonite','Dragon/Flying','Multiscale / Multiscale','Dragoninite','Dragon Pulse:Dragon,Heat Wave:Fire,Tailwind:Flying,Protect:Normal'),
+    mon('Froslass','Ice/Ghost','Cursed Body / Snow Warning','Froslassite','Blizzard:Ice,Shadow Ball:Ghost,Aurora Veil:Ice,Protect:Normal','FroslassMega'),
+    mon('Basculegion (Male)','Water/Ghost','Adaptability','Colbur Berry','Wave Crash:Water,Last Respects:Ghost,Aqua Jet:Water,Protect:Normal'),
+    mon('Incineroar','Fire/Dark','Intimidate','Sitrus Berry','Flare Blitz:Fire,Throat Chop:Dark,Fake Out:Normal,Parting Shot:Dark'),
+    mon('Kingambit','Dark/Steel','Defiant','Black Glasses','Kowtow Cleave:Dark,Sucker Punch:Dark,Swords Dance:Normal,Protect:Normal'),
+    mon('Sneasler','Fighting/Poison','Poison Touch','Focus Sash','Close Combat:Fighting,Poison Jab:Poison,Fake Out:Normal,Protect:Normal')
+  ]
+};
+
+const TYPE_COLORS = {Bug:'#A6B91A',Electric:'#F7D02C',Normal:'#A8A77A',Fire:'#EE8130',Water:'#6390F0',Grass:'#7AC74C',Flying:'#A98FF3',Fighting:'#C22E28',Poison:'#A33EA1',Ground:'#E2BF65',Rock:'#B6A136',Ghost:'#735797',Steel:'#B7B7CE',Dragon:'#6F35FC',Dark:'#705746',Fairy:'#D685AD',Ice:'#96D9D6',Psychic:'#F95587'};
+/* Type icons: Bulbagarden's Special:FilePath redirects to the real file, so only the type name changes */
+const TYPE_ICON = t => 'https://archives.bulbagarden.net/wiki/Special:FilePath/' + t + '_icon_SV.png';
+const chip = t => `<img class="ticon" src="${TYPE_ICON(t)}" alt="${t}" title="${t}" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'chip',textContent:this.alt.slice(0,3)}))">`;
+
+/* Sprites: files in the GitHub repo's sprites folder. Names that differ from the repo file name go in SPRITE_FILES */
+const SPRITE_FILES = {'Aerodactyl':'AerodactylMega', 'Delphox':'DelphoxMega', 'Charizard':'CharizardMegaY', 'Alolan Ninetales':'NinetalesAlola', 'Basculegion (Male)':'BasculegionM', 'Floette (Eternal Flower)':'FloetteEternalMega', 'Dragonite':'DragoniteMega', 'Scovillain':'ScovillainMega'};
+const spriteUrl = p => p.sprite || 'https://raw.githubusercontent.com/Lucas-Zhao/Data-Vis-Project/refs/heads/main/sprites/' + (p.file || SPRITE_FILES[p.name] || p.name) + '.png';
+
+/* Items: Serebii folders. za = Legends Z-A items, pgl = older mega stones, sv = everything else */
+const ITEM_FILES = {'Never-Melt Ice':'never-meltice'}; /* items whose file name isn't just the name without spaces or hyphens */
+const ITEM_FOLDER = {'Delphoxite':'za', 'Floettite':'za', 'Dragoninite':'za', 'Scovillainite':'za', 'Froslassite':'za', 'Gengarite':'pgl', 'Steelixite':'pgl', 'Tyranitarite':'pgl', 'Aerodactylite':'pgl', 'Charizardite Y':'pgl'};
+const itemUrl = n => 'https://www.serebii.net/itemdex/sprites/' + (ITEM_FOLDER[n] || 'sv') + '/' + (ITEM_FILES[n] || n.toLowerCase().replace(/[^a-z]/g, '')) + '.png';
+/* ---- Pikalytics, Pokemon Champions VGC 2026 Tournaments (Reg M-B), archived September 2026 ----
+   usage: name -> [rank, usage %] (rank 1-26 plus every opposing Pokémon in the ten matchups). partners: name -> {partner: % of that Pokémon's teams}.
+   cores: [{mons:['A','B','C'], pct:8.0}] for 3 and 4 Pokémon cores. Add more data here and the tab picks it up. */
+/* Best-teammate stats from Pikalytics (Reg M-B), one line per Pokemon: 'Name: Partner percent, Partner percent, ...' */
+const PARTNER_TEXT = `Charizard-Mega-Y: Garchomp 63.438, Kingambit 41.331, Basculegion 41.242, Whimsicott 35.090, Venusaur 33.029, Incineroar 29.585, Sylveon 28.142, Archaludon 21.548, Grimmsnarl 20.724, Farigiraf 20.489, Pelipper 20.695, Aerodactyl-Mega 17.633
+Basculegion: Kingambit 46.619, Charizard-Mega-Y 40.317, Whimsicott 34.475, Garchomp 32.432, Floette-Eternal-Mega 23.022, Archaludon 22.734, Pelipper 22.446, Sneasler 21.899, Grimmsnarl 18.101, Venusaur 13.986, Incineroar 13.295, Sylveon 11.770
+Garchomp: Charizard-Mega-Y 54.309, Kingambit 49.773, Whimsicott 44.657, Incineroar 28.856, Basculegion 28.403, Sylveon 25.302, Farigiraf 19.607, Staraptor-Mega 18.750, Floette-Eternal-Mega 18.221, Aerodactyl-Mega 15.499, Delphox-Mega 13.836, Sneasler 13.483
+Glimmora: Whimsicott 82.342, Garchomp 76.967, Staraptor-Mega 76.200, Kingambit 71.593, Delphox-Mega 63.916, Basculegion 13.628, Charizard-Mega-Y 13.436, Incineroar 6.910, Sinistcha 4.990, Farigiraf 4.415, Raichu-Mega-Y 4.223, Froslass-Mega 4.223
+Kingambit: Garchomp 41.994, Basculegion 34.446, Whimsicott 31.852, Charizard-Mega-Y 29.853, Sneasler 28.429, Sylveon 26.047, Farigiraf 24.261, Incineroar 21.391, Floette-Eternal-Mega 17.606, Staraptor-Mega 16.734, Delphox-Mega 16.713, Aerodactyl-Mega 16.309
+Whimsicott: Garchomp 59.704, Kingambit 50.472, Basculegion 40.364, Charizard-Mega-Y 40.162, Staraptor-Mega 29.009, Floette-Eternal-Mega 25.708, Incineroar 18.160, Delphox-Mega 17.217, Glimmora 14.454, Sneasler 13.780, Farigiraf 13.140, Sylveon 9.333
+Delphox-Mega: Kingambit 61.263, Sneasler 50.740, Sinistcha 48.948, Incineroar 45.674, Garchomp 42.790, Whimsicott 39.829, Staraptor-Mega 31.567, Blastoise-Mega 29.384, Glimmora 25.955, Floette-Eternal-Mega 13.406, Maushold 12.003, Basculegion 5.924
+Floette-Eternal-Mega: Kingambit 51.912, Basculegion 50.157, Whimsicott 47.837, Garchomp 45.329, Incineroar 43.072, Charizard-Mega-Y 34.796, Sinistcha 34.107, Sneasler 28.589, Delphox-Mega 10.784, Farigiraf 9.718, Dragonite 7.210, Ceruledge 6.834
+Incineroar: Sinistcha 38.138, Garchomp 31.080, Kingambit 27.307, Sneasler 27.280, Charizard-Mega-Y 27.280, Floette-Eternal-Mega 18.648, Gengar-Mega 16.287, Delphox-Mega 15.907, Whimsicott 14.631, Farigiraf 14.251, Sylveon 13.165, Venusaur 12.758
+Maushold: Incineroar 38.978, Sinistcha 34.745, Kingambit 26.715, Basculegion 24.526, Delphox-Mega 22.482, Talonflame 21.314, Gardevoir-Mega 20.000, Sneasler 19.708, Garchomp 17.664, Whimsicott 16.788, Blastoise-Mega 15.182, Floette-Eternal-Mega 13.577
+Sinistcha: Incineroar 44.504, Sneasler 31.454, Milotic 27.748, Staraptor-Mega 26.132, Gholdengo 24.897, Tyranitar-Mega 24.675, Excadrill 22.553, Kingambit 22.553, Delphox-Mega 19.892, Floette-Eternal-Mega 17.232, Blastoise-Mega 14.254, Pelipper 13.684
+Vivillon: Incineroar 64.482, Gengar-Mega 47.780, Politoed 46.512, Swampert-Mega 46.512, Archaludon 41.860, Farigiraf 24.736, Torkoal 13.742, Mawile-Mega 10.359, Garchomp 10.148, Kingambit 9.725, Sinistcha 9.514, Blastoise-Mega 7.822
+Kleavor: Whimsicott 29.688, Aerodactyl 21.094, Kingambit 18.750, Sneasler 18.750, Farigiraf 16.406, Basculegion 15.625, Delphox-Mega 14.063, Glimmora 12.500, Hydreigon 11.719, Ninetales-Alola 11.719, Garchomp 10.938, Incineroar 10.156
+Dragonite-Mega: Basculegion 49.371, Kingambit 39.623, Sneasler 36.478, Garchomp 29.560, Pelipper 26.415, Archaludon 26.101, Whimsicott 18.239, Sylveon 16.610, Froslass-Mega 16.667, Sinistcha 15.723, Incineroar 11.635, Grimmsnarl 11.635
+Scovillain-Mega: Basculegion 67.981, Kingambit 61.253, Sneasler 55.452, Lycanroc 54.060, Froslass-Mega 50.812, Grimmsnarl 12.993, Garchomp 10.441, Sylveon 10.209, Tyranitar-Mega 8.585, Archaludon 8.353, Incineroar 8.121, Pelipper 7.657
+Archaludon: Pelipper 78.032, Grimmsnarl 47.163, Swampert-Mega 46.278, Basculegion 41.124, Charizard-Mega-Y 38.105, Venusaur 29.308, Sinistcha 21.760, Incineroar 19.729, Politoed 17.335, Gengar-Mega 14.211, Venusaur-Mega 13.066, Sableye 12.441
+Espathra: Sableye 31.707, Sylveon 24.390, Rotom-Wash 24.390, Gholdengo 24.390, Tyranitar-Mega 24.390, Charizard-Mega-Y 21.951, Garchomp 19.12, Archaludon 19.512, Incineroar 19.512, Pelipper 19.512, Sneasler 19.512, Kingambit 14.634
+Politoed: Incineroar 73.767, Gengar-Mega 69.231, Archaludon 65.680, Swampert-Mega 52.465, Vivillon 43.393, Sinistcha 20.316, Basculegion 13.018, Grimmsnarl 13.018, Charizard-Mega-Y 8.101, Whimsicott 6.312, Kommo-o 5.917, Dragonite-Mega 5.720
+Sneasler: Kingambit 49.100, Incineroar 36.908, Sinistcha 36.467, Basculegion 27.947, Delphox-Mega 23.907, Froslass-Mega 19.721, Garchomp 19.647, Floette-Eternal-Mega 16.746, Blastoise-Mega 15.241, Whimsicott 15.020, Charizard-Mega-Y 10.393, Lycanroc 8.814
+Ceruledge: Milotic 40.667, Sinistcha 39.333, Raichu-Mega-Y 37.111, Incineroar 29.556, Staraptor-Mega 26.222, Floette-Eternal-Mega 24.222, Garchomp 23.556, Metagross-Mega 23.111, Whimsicott 22.889, Farigiraf 22.889, Ninetales-Alola 21.333, Kingambit 14.222
+Milotic: Sinistcha 66.364, Staraptor-Mega 57.424, Excadrill 52.652, Tyranitar-Mega 51.288, Gholdengo 51.288, Incineroar 18.788, Raichu-Mega-Y 14.924, Ceruledge 13.864, Garchomp 12.273, Sneasler 10.985, Whimsicott 9.848, Floette-Eternal-Mega 7.652
+Tyranitar-Mega: Excadrill 76.330, Sinistcha 69.060, Gholdengo 60.550, Milotic 60.018, Staraptor-Mega 58.954, Rotom-Wash 10.195, Sneasler 9.574, Incineroar 9.397, Sylveon 8.156, Corviknight 7.624, Garchomp 7.270, Farigiraf 7.181
+Corviknight: Tyranitar 37.576, Sneasler 31.515, Basculegion 30.606, Garchomp-Mega 27.576, Tyranitar-Mega 26.061, Garchomp 23.939, Scizor 20.909, Sinistcha 18.788, Raichu-Mega-Y 18.182, Excadrill 17.879, Rotom-Wash 16.970, Sylveon 16.061
+Excadrill: Tyranitar-Mega 86.970, Staraptor-Mega 73.434, Sinistcha 71.919, Milotic 70.202, Gholdengo 67.576, Tyranitar 11.616, Rotom-Wash 9.495, Venusaur-Mega 7.071, Incineroar 6.566, Sylveon 6.364, Corviknight 5.960, Houndstone 5.657
+Hydreigon: Incineroar 35.253, Metagross-Mega 31.239, Sneasler 30.366, Charizard-Mega-Y 27.051, Whimsicott 25.829, Toxapex 21.291, Sinistcha 18.848, Floette-Eternal-Mega 17.801, Garchomp 16.928, Grimmsnarl 13.438, Basculegion 11.867, Gholdengo 11.344
+Mimikyu: Incineroar 19.318, Sinistcha 18.182, Garchomp 14.773, Raichu-Mega-Y 14.773, Meowscarada 14.773, Sylveon 14.773, Basculegion 13.636, Corviknight 12.500, Milotic 12.500, Ninetales-Alola 11.364, Kingambit 11.364, Mawile-Mega 10.227
+Rotom-Wash: Garchomp 26.681, Tyranitar-Mega 24.946, Sinistcha 23.861, Sneasler 22.560, Excadrill 20.390, Kingambit 19.523, Incineroar 16.920, Whimsicott 14.534, Staraptor-Mega 14.534, Gholdengo 13.232, Venusaur-Mega 13.232, Corviknight 12.148
+Froslass-Mega: Kingambit 73.333, Sneasler 71.600, Basculegion 46.800, Lycanroc 32.000, Scovillain-Mega 29.200, Garchomp 23.333, Dragonite 12.933, Blaziken-Mega 12.000, Incineroar 11.733, Whimsicott 11.467, Toxapex 10.800, Sinistcha 8.000
+Palafin: Incineroar 43.333, Sinistcha 28.333, Pelipper 28.333, Archaludon 18.333, Kingambit 18.333, Gholdengo 18.333, Garchomp 18.333, Gengar-Mega 16.667, Politoed 13.333, Whimsicott 13.333, Sneasler 10.000, Dragonite-Mega 10.000
+Steelix-Mega: Sinistcha 50.980, Tyranitar-Mega 35.294, Sneasler 29.412, Talonflame 25.490, Rotom-Wash 23.529, Tyranitar 23.529, Farigiraf 17.647, Hippowdon 13.725, Incineroar 11.765, Aerodactyl 11.765, Kleavor 11.765, Kingambit 9.804
+Talonflame: Kingambit 37.968, Basculegion 34.225, Garchomp 32.264, Maushold 26.025, Gardevoir-Mega 25.847, Ninetales-Alola 16.756, Sneasler 15.330, Kommo-o 15.330, Raichu-Mega-Y 14.795, Floette-Eternal-Mega 14.260, Sinistcha 12.656, Gholdengo 10.695
+Aerodactyl: Garchomp 43.498, Charizard-Mega-Y 34.305, Kingambit 30.269, Sylveon 27.354, Basculegion 25.336, Incineroar 25.112, Farigiraf 20.852, Sneasler 17.937, Metagross-Mega 14.574, Sinistcha 12.556, Floette-Eternal-Mega 12.556, Raichu-Mega-Y 9.417
+Farigiraf: Kingambit 45.476, Sylveon 41.411, Garchomp 31.008, Charizard-Mega-Y 27.740, Incineroar 20.925, Torkoal 18.812, Aerodactyl-Mega 18.374, Staraptor-Mega 16.979, Raichu-Mega-Y 16.421, Whimsicott 15.544, Basculegion 15.185, Mawile-Mega 14.508
+Sylveon: Kingambit 57.512, Farigiraf 48.779, Garchomp 47.136, Charizard-Mega-Y 44.883, Aerodactyl-Mega 33.380, Incineroar 22.770, Raichu-Mega-Y 21.127, Basculegion 19.202, Staraptor-Mega 17.746, Whimsicott 13.005, Arcanine-Hisui 11.925, Sneasler 8.263`;
+const parsePartners = t => Object.fromEntries(t.trim().split('\n').map(l => { const [k, rest] = l.split(': ');
+  return [k, Object.fromEntries(rest.split(', ').map(x => { const i = x.lastIndexOf(' '); return [x.slice(0, i), +x.slice(i + 1)]; }))]; }));
+const PIKA = {
+  usage: {'Kingambit':[1,35.59],'Garchomp':[2,30.02],'Incineroar':[3,27.88],'Basculegion':[4,26.29],'Charizard-Mega-Y':[5,25.70],'Sinistcha':[6,23.89],'Whimsicott':[7,22.46],'Sneasler':[8,20.60],'Farigiraf':[9,18.98],'Staraptor-Mega':[10,16.47],'Sylveon':[11,16.12],'Archaludon':[12,14.54],'Pelipper':[13,13.37],'Floette-Eternal-Mega':[14,12.07],'Grimmsnarl':[15,10.91],'Gholdengo':[16,10.38],'Milotic':[17,9.99],'Delphox-Mega':[18,9.71],'Raichu-Mega-Y':[19,9.41],'Venusaur':[20,9.31],'Tyranitar-Mega':[21,8.54],'Swampert-Mega':[22,7.98],'Aerodactyl-Mega':[23,7.49],'Excadrill':[24,7.49],'Ninetales-Alola':[25,6.27],'Froslass-Mega':[26,6],'Maushold':[30,5],'Hydreigon':[34,4],'Talonflame':[36,4],'Glimmora':[38,4],'Politoed':[39,4],'Vivillon':[41,4],'Rotom-Wash':[43,3],'Ceruledge':[45,3],'Aerodactyl':[46,3],'Scovillain-Mega':[47,3],'Corviknight':[52,2],'Dragonite-Mega':[53,2],'Mimikyu':[92,1],'Kleavor':[73,1],'Palafin':[118,'<1'],'Steelix-Mega':[130,'<1'],'Espathra':[152,'<1']},
+  partners: parsePartners(PARTNER_TEXT),
+  cores: [
+    {mons:['Charizard-Mega-Y','Garchomp'], pct:16.3}, {mons:['Garchomp','Kingambit'], pct:14.9}, {mons:['Garchomp','Whimsicott'], pct:13.4},
+    {mons:['Basculegion','Kingambit'], pct:12.3}, {mons:['Archaludon','Pelipper'], pct:11.3},
+    {mons:['Charizard-Mega-Y','Garchomp','Kingambit'], pct:9.1}, {mons:['Garchomp','Kingambit','Whimsicott'], pct:8.0},
+    {mons:['Charizard-Mega-Y','Garchomp','Whimsicott'], pct:6.9}, {mons:['Archaludon','Grimmsnarl','Pelipper'], pct:6.6},
+    {mons:['Charizard-Mega-Y','Garchomp','Sylveon'], pct:6.3},
+    {mons:['Basculegion','Charizard-Mega-Y','Garchomp','Whimsicott'], pct:4.8}, {mons:['Excadrill','Sinistcha','Staraptor-Mega','Tyranitar-Mega'], pct:4.7},
+    {mons:['Charizard-Mega-Y','Garchomp','Kingambit','Sylveon'], pct:4.6}, {mons:['Excadrill','Gholdengo','Sinistcha','Tyranitar-Mega'], pct:4.6},
+    {mons:['Excadrill','Gholdengo','Milotic','Staraptor-Mega'], pct:4.6}
+  ]
+};
+const PIKA_KEYS = {'Floette (Eternal Flower)':'Floette-Eternal-Mega','Alolan Ninetales':'Ninetales-Alola','Basculegion (Male)':'Basculegion','Hisuian Samurott':'Samurott-Hisui','Rotom Wash':'Rotom-Wash','Palafin (Hero Form)':'Palafin','Charizard':'Charizard-Mega-Y'};
+/* Display-only names; p.name stays as the lookup key for sprites and Pikalytics data */
+const DISPLAY = {'Basculegion (Male)':'Basculegion', 'Floette (Eternal Flower)':'Floette (Eternal)', 'Palafin (Hero Form)':'Palafin'};
+const dn = n => DISPLAY[n] || n;
+const pikaKey = p => PIKA_KEYS[p.name] || p.name.replace(/ /g, '-') + (isMega(p) ? '-Mega' : '');
+const rankBadge = p => { const u = PIKA.usage[pikaKey(p)];
+  return u ? `<span class="rank" title="Usage rank among Reg M-B tournament teams (${u[1]}% of teams)">#${u[0]} Usage</span>`
+           : `<span class="rank low" title="No Reg M-B usage rank loaded for this Pokémon">Usage n/a</span>`; };
+
+/* ---- Opponent roles and move stars (Specialized Main tab). Roles are in opponent-card order; blue = good support move, yellow = priority attack ---- */
+const OPP_NOTES = {
+ 1:{roles:['Offense','Offense','Utility-Offense','Offense','Offense','Support'], blue:['Tailwind','Encore'], yellow:['Sucker Punch','Aqua Jet']},
+ 2:{roles:['Offense','Offense','Utility-Offense','Support','Support','Support'], blue:['Fake Out','Parting Shot','Follow Me','Helping Hand','Feint','Rage Powder','Life Dew','Sleep Powder','Pollen Puff'], yellow:['Fake Out','Feint']},
+ 3:{roles:['Offense','Offense','Offense','Offense','Offense','Support'], blue:['Encore','Tailwind'], yellow:['Sucker Punch']},
+ 4:{roles:['Offense','Support','Offense','Support','Offense','Utility-Offense'], blue:['Leech Seed','Rage Powder','Baton Pass','Fake Out'], yellow:['Extreme Speed','Fake Out']},
+ 5:{roles:['Offense','Offense','Utility-Offense','Utility-Offense','Support','Support'], blue:['Fake Out','Parting Shot','Hypnosis','Coil','Rage Powder','Life Dew','Sleep Powder'], yellow:['Shadow Sneak','Fake Out']},
+ 6:{roles:['Offense','Support','Offense','Utility-Offense','Offense','Utility-Offense'], blue:['Tailwind','Snarl','Will-O-Wisp'], yellow:['Shadow Sneak']},
+ 7:{roles:['Offense','Utility-Offense','Offense','Offense','Offense','Utility-Offense'], blue:['Aurora Veil','Fake Out','Coaching'], yellow:['Extreme Speed','Sucker Punch','Jet Punch','Fake Out']},
+ 8:{roles:['Utility-Offense','Offense','Support','Support','Utility-Offense','Offense'], blue:['Wide Guard','Will-O-Wisp','Light Screen','Rage Powder','Trick Room','Fake Out'], yellow:['Fake Out']},
+ 9:{roles:['Offense','Support','Support','Offense','Utility-Offense','Utility-Offense'], blue:['Tailwind','Wide Guard','Helping Hand','Trick Room','Fake Out','Parting Shot','Yawn'], yellow:['Quick Attack','Fake Out']},
+ 10:{roles:['Utility-Offense','Utility-Offense','Offense','Utility-Offense','Offense','Utility-Offense'], blue:['Tailwind','Aurora Veil','Fake Out','Parting Shot'], yellow:['Aqua Jet','Fake Out','Sucker Punch']}
+};
+const star = (c, t) => `<b class="star ${c}" title="${t}">\u2605</b>`;
+
+/* ---- Synergy Chart tab (cores and per-Pokemon partners) ---- */
+const CORE_COLORS = {2:'#1F9E89', 3:'#2F5F8F', 4:'#8E44AD'};
+let nodeFocus = -1, nodeMatch = 0, nodeShow = 'all'; /* nodeShow: all | c2 | c3 | c4 */
+const pairPct = (a, b) => { const x = (PIKA.partners[pikaKey(a)] || {})[pikaKey(b)], y = (PIKA.partners[pikaKey(b)] || {})[pikaKey(a)];
+  return (x === undefined && y === undefined) ? null : Math.max(x || 0, y || 0); };
+const ring = (i, n) => { const a = (-90 + i * 360 / n) * Math.PI / 180; return [400 + 290 * Math.cos(a), 225 + 160 * Math.sin(a)]; };
+const SPOTS = []; for (const dy of [0,-26,26,-52,52,-78,78,-104,104,-130,130]) for (const dx of [0,-70,70,-110,110,-150,150,-190,190]) SPOTS.push([dx, dy]);
+SPOTS.sort((p, q) => Math.hypot(p[0], p[1]) - Math.hypot(q[0], q[1]));
+function renderNodes(el, m, mode){
+  const team = m.teams.opp, keys = team.map(pikaKey);
+  if (nodeMatch !== m.id) { nodeMatch = m.id; nodeFocus = -1; } /* a new matchup starts on the team view */
+  const btn = (k, label, on, dot) => `<button class="cbtn" data-k="${k}" aria-pressed="${on}">${dot ? `<i class="dot" style="background:${dot}"></i>` : ''}${label}</button>`;
+  const draw = () => {
+    const f = nodeFocus < team.length ? nodeFocus : -1;
+    let pts = [];
+    if (f < 0) pts = team.map((_, i) => ring(i, team.length));
+    else { const others = team.map((_, i) => i).filter(i => i !== f); pts[f] = [400, 225]; others.forEach((i, k) => pts[i] = ring(k, others.length)); }
+    const links = [];
+    /* Team view shows cores only. A Pokemon's own view uses only that Pokemon's own best-teammate list, never the other side's list. */
+    if (f >= 0) team.forEach((t, i) => { if (i !== f) { const p = (PIKA.partners[keys[f]] || {})[keys[i]]; if (p !== undefined) links.push([f, i, p]); } });
+    const cores = f < 0 ? PIKA.cores.filter(c => (nodeShow === 'all' || nodeShow === 'c' + c.mons.length) && c.mons.every(k => keys.includes(k))) : [];
+
+    /* Labels are drawn after every line, and each is moved to the nearest free spot so none sits under another line, label or Pokemon */
+    const placed = [];
+    const put = (cands, w) => { const base = cands[0], all = cands.concat(SPOTS.map(o => [base[0] + o[0], base[1] + o[1]]));
+      const bad = c => (c[0] < w / 2 || c[0] > 800 - w / 2 || c[1] < 14 || c[1] > 436 ? 50 : 0)
+        + (pts.some(p => Math.abs(c[0] - p[0]) < w / 2 + 40 && c[1] > p[1] - 46 && c[1] < p[1] + 70) ? 20 : 0)
+        + placed.filter(q => Math.abs(q[0] - c[0]) < (q[2] + w) / 2 + 4 && Math.abs(q[1] - c[1]) < 25).length * 10;
+      let best = base, bs = 1e9; for (const c of all) { const sc = bad(c); if (sc < bs) { bs = sc; best = c; if (sc === 0) break; } }
+      placed.push([best[0], best[1], w]); return best; };
+    const pill = (txt, cands, col, fill, dark) => { const w = txt.length * 7.4 + 18, [x, y] = put(cands, w);
+      return `<g class="lbl"><rect x="${x - w / 2}" y="${y - 11}" width="${w}" height="22" rx="11" fill="${fill}" stroke="${col}" stroke-width="2"/><text class="${dark ? 'max' : ''}" x="${x}" y="${y + 5}" text-anchor="middle" font-size="13" font-weight="700">${txt}</text></g>`; };
+    const along = (a, b, ts) => ts.map(t => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]);
+
+    let polys = '', arcs = '', labels = '';
+    const coreLabels = [];
+    cores.forEach(c => {
+      const col = CORE_COLORS[c.mons.length], q = c.mons.map(k => pts[keys.indexOf(k)]), txt = `${c.mons.length}-core ${c.pct}%`;
+      if (q.length === 2) {
+        const [a, b] = q, mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2, len = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1, nx = -(b[1] - a[1]) / len, ny = (b[0] - a[0]) / len;
+        arcs += `<path d="M${a[0]},${a[1]} Q${mx + nx * 44},${my + ny * 44} ${b[0]},${b[1]}" fill="none" stroke="${col}" stroke-width="4" stroke-linecap="round"/>`;
+        coreLabels.push([txt, [[mx + nx * 22, my + ny * 22], [mx + nx * 22 + 30, my + ny * 22], [mx + nx * 22 - 30, my + ny * 22]], col]);
+      } else {
+        const cx = q.reduce((t, v) => t + v[0], 0) / q.length, cy = q.reduce((t, v) => t + v[1], 0) / q.length;
+        polys += `<polygon points="${q.map(v => v.join(',')).join(' ')}" fill="${col}" fill-opacity=".13" stroke="${col}" stroke-width="3" stroke-dasharray="${q.length === 4 ? '2 6' : '10 5'}" stroke-linecap="round"/>`;
+        coreLabels.push([txt, [[cx, cy], [cx, cy - 28], [cx, cy + 28]], col]);
+      }
+    });
+    const byP = [...links].sort((x, y) => x[2] - y[2]);
+    const lines = byP.map(([i, j, p]) => { const a = pts[i], b = pts[j], hot = p > 20, max = p > 45, col = hot ? '#D8372B' : '#8A97AA';
+      return `${max ? `<line x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}" stroke="#F2C230" stroke-opacity=".6" stroke-width="18" stroke-linecap="round"/>` : ''}<line x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}" stroke="${col}" stroke-width="${hot ? 7 : 2.5}" stroke-linecap="round"/>`; }).join('');
+    [...byP].reverse().forEach(([i, j, p]) => { const max = p > 45, col = p > 20 ? '#D8372B' : '#8A97AA';
+      labels += pill((max ? '\u2605 ' : '') + p.toFixed(1) + '%', along(pts[i], pts[j], f < 0 ? [.5, .4, .6, .33, .67] : [.55, .45, .65, .38, .72]), col, max ? '#F2C230' : 'var(--surface)', max); });
+    coreLabels.forEach(([txt, cands, col]) => { labels += pill(txt, cands, col, 'var(--surface)', false); });
+
+    const nodes = team.map((raw, i) => { const p = shown(raw, mode), linked = f < 0 || i === f || links.some(l => l[0] === i || l[1] === i) || cores.some(c => c.mons.includes(keys[i]));
+      return `<div class="nnode${linked ? '' : ' dim'}${i === f ? ' sel' : ''}" style="left:${pts[i][0] / 8}%;top:${pts[i][1] / 4.5}%">${spriteHtml(p)}<div class="nlabel">${dn(p.name)}</div></div>`; }).join('');
+
+    /* Side graph: one row per core, a dot under each member, joined by a bar */
+    const rows = cores.map(c => { const col = CORE_COLORS[c.mons.length], idx = c.mons.map(k => keys.indexOf(k)), lo = Math.min(...idx), hi = Math.max(...idx);
+      return `<div class="crow"><div class="ccells"><i class="cbar" style="left:${lo * 34 + 17}px;width:${(hi - lo) * 34}px;background:${col}"></i>${team.map((t, i) => `<div class="ccell">${idx.includes(i) ? `<i class="cdot" style="background:${col}" title="${dn(t.name)}"></i>` : ''}</div>`).join('')}</div><span class="cpct" style="color:${col}">${c.mons.length}-core<br>${c.pct}%</span></div>`; }).join('');
+    const panel = f < 0 ? `<aside class="cpanel"><h3>Common cores</h3><div class="crow chead"><div class="ccells">${team.map(raw => `<div class="hcell" title="${dn(raw.name)}">${spriteHtml(shown(raw, mode))}</div>`).join('')}</div><span></span></div>
+      ${rows || `<p class="cnone">None of the common cores fit this team.</p>`}
+      <p class="cnote">Percent is the share of all teams that include the group.</p></aside>` : '';
+
+    const missing = team.filter(p => !PIKA.partners[pikaKey(p)]).map(p => p.name);
+    el.innerHTML = `<div class="nctl"><span>View</span>${btn(-1, 'Team pairings', f < 0)}${team.map((p, i) => btn(i, dn(p.name), f === i)).join('')}</div>
+      ${f < 0 ? `<div class="nctl"><span>Show</span>${btn('all', 'All cores', nodeShow === 'all')}${btn('c2', '2-Pok\u00e9mon cores', nodeShow === 'c2', CORE_COLORS[2])}${btn('c3', '3-Pok\u00e9mon cores', nodeShow === 'c3', CORE_COLORS[3])}${btn('c4', '4-Pok\u00e9mon cores', nodeShow === 'c4', CORE_COLORS[4])}</div>` : ''}
+      <div class="nbody"><div class="nodewrap"><svg viewBox="0 0 800 450" role="img" aria-label="Synergy chart of the opposing team">${polys}${arcs}${lines}${labels}</svg>${nodes}</div>${panel}</div>
+      <div class="legend">${f >= 0 ? `<span><b></b>Partner on more than 20% of this Pokémon's teams</span><span><b class="max"></b>Partner on more than 45% of its teams (glowing line and star)</span><span><b class="thin"></b>Partner on 20% of its teams or fewer</span><span>Each percent comes only from this Pokémon's own best-teammate list.</span>` : `<span>Dots and bars in the side graph show who is in each core. Percent is the share of all teams that include the group.</span>`}
+      ${f >= 0 && !links.length ? `<span>None of the other Pokémon on this team are among ${dn(team[f].name)}'s best teammates.</span>` : ''}
+      ${f >= 0 && missing.includes(team[f].name) ? `<span>Partner data not loaded yet for ${dn(team[f].name)}.</span>` : ''}</div>`;
+    el.querySelectorAll('.cbtn').forEach(b => b.onclick = () => { const k = b.dataset.k; if (['all', 'c2', 'c3', 'c4'].includes(k)) nodeShow = k; else nodeFocus = +k; draw(); });
+  };
+  draw();
+}
+
+const isMega = p => /ite( [XY])?$/.test(p.item);
+const BASE_FILES = {'Floette (Eternal Flower)':'FloetteEternal'}; /* pre-mega sprite names that differ from the Pokémon's name */
+/* Plain mode mirrors the original team sheets: megas show their pre-mega form and first ability only */
+const shown = (p, mode) => (mode && mode.plain && isMega(p)) ? {...p, ability:p.ability.split(' / ')[0], file:BASE_FILES[p.name] || p.name} : p;
+
+/* Type matchup scoring. Offense: a Pokémon's strongest damaging move against each opposing Pokémon.
+   Defense: the same, from each opposing Pokémon's moves against it, with the sign flipped.
+   Per matchup: 4x = 4 points, 2x = 2, neutral = 0, resisted = -2, double resisted or immune = -4. */
+const T = (s, r, i) => ({s:(s||'').split(' '), r:(r||'').split(' '), i:(i||'').split(' ')});
+const CHART = {
+  Normal:T('', 'Rock Steel', 'Ghost'), Fire:T('Grass Ice Bug Steel', 'Fire Water Rock Dragon'),
+  Water:T('Fire Ground Rock', 'Water Grass Dragon'), Electric:T('Water Flying', 'Electric Grass Dragon', 'Ground'),
+  Grass:T('Water Ground Rock', 'Fire Grass Poison Flying Bug Dragon Steel'), Ice:T('Grass Ground Flying Dragon', 'Fire Water Ice Steel'),
+  Fighting:T('Normal Ice Rock Dark Steel', 'Poison Flying Psychic Bug Fairy', 'Ghost'), Poison:T('Grass Fairy', 'Poison Ground Rock Ghost', 'Steel'),
+  Ground:T('Fire Electric Poison Rock Steel', 'Grass Bug', 'Flying'), Flying:T('Grass Fighting Bug', 'Electric Rock Steel'),
+  Psychic:T('Fighting Poison', 'Psychic Steel', 'Dark'), Bug:T('Grass Psychic Dark', 'Fire Fighting Poison Flying Ghost Steel Fairy'),
+  Rock:T('Fire Ice Flying Bug', 'Fighting Ground Steel'), Ghost:T('Psychic Ghost', 'Dark', 'Normal'),
+  Dragon:T('Dragon', 'Steel', 'Fairy'), Dark:T('Psychic Ghost', 'Fighting Dark Fairy'),
+  Steel:T('Ice Rock Fairy', 'Fire Water Electric Steel'), Fairy:T('Fighting Dragon Dark', 'Fire Poison Steel')
+};
+/* Moves that deal no damage are ignored when picking a Pokémon's strongest move */
+const STATUS_MOVES = new Set(['Protect','Detect','Spiky Shield','Wide Guard','Quick Guard','Tailwind','Encore','Calm Mind','Swords Dance','Nasty Plot','Bulk Up','Dragon Dance','Coil','Follow Me','Rage Powder','Helping Hand','Substitute','Disable','Aurora Veil','Light Screen','Trick Room','Life Dew','Leech Seed','Hypnosis','Sleep Powder','Roost','Baton Pass','Will-O-Wisp','Psych Up','Yawn','Coaching']);
+/* Weather Ball takes its type from the user's weather ability */
+const WEATHER = {'Drought':'Fire', 'Drizzle':'Water', 'Snow Warning':'Ice', 'Sand Stream':'Rock'};
+const moveType = (p, [name, type]) => name === 'Weather Ball' ? (WEATHER[Object.keys(WEATHER).find(a => p.ability.includes(a))] || type) : type;
+/* Freeze-Dry is the one Ice move that hits Water types for double damage */
+const effect = (name, type, defTypes) => defTypes.reduce((m, d) => m * (name === 'Freeze-Dry' && d === 'Water' ? 2 : CHART[type].i.includes(d) ? 0 : CHART[type].s.includes(d) ? 2 : CHART[type].r.includes(d) ? .5 : 1), 1);
+const strongest = (atk, def) => { const e = atk.moves.filter(([n]) => !STATUS_MOVES.has(n)).map(mv => effect(mv[0], moveType(atk, mv), def.types)); return e.length ? Math.max(...e) : 1; };
+const points = x => x >= 4 ? 4 : x >= 2 ? 2 : x === 1 ? 0 : x > .25 ? -2 : -4;
+function typeScore(p, enemyTeam){
+  return {off: enemyTeam.reduce((s, d) => s + points(strongest(p, d)), 0),
+          def: 0 - enemyTeam.reduce((s, a) => s + points(strongest(a, p)), 0)};
+}
+const scoreBox = n => `<div class="score ${n > 0 ? 'pos' : n < 0 ? 'neg' : 'zero'}">${n > 0 ? '+' : ''}${n}</div>`;
+function spriteHtml(p){
+  const c = TYPE_COLORS[p.types[0]];
+  return `<div class="sprite" style="background:radial-gradient(circle at 35% 30%,#fff8,${c})"><span>${p.name[0]}</span><img src="${spriteUrl(p)}" alt="${dn(p.name)}" onload="this.parentNode.classList.add('ok')" onerror="this.remove()"></div>`;
+}
+function renderTypes(el, m, mode){
+  const list = (label, team, enemy) => `<section class="team"><h2>${label}</h2><ul class="tlist"><li class="trow thead"><span></span><span></span><b>Offense</b><b>Defense</b></li>${team.map(raw => {
+    const p = shown(raw, mode), s = typeScore(raw, enemy);
+    return `<li class="trow">${spriteHtml(p)}<div><strong>${dn(p.name)}</strong><div class="chips">${p.types.map(chip).join('')}</div></div>${scoreBox(s.off)}${scoreBox(s.def)}</li>`;
+  }).join('')}</ul></section>`;
+  el.innerHTML = `<div class="teams"><p class="note">Offense adds up each Pokémon's strongest move against every opposing Pokémon. Defense does the same for the opposing team's moves against it.</p>${list('Your team', m.teams.mine, m.teams.opp)}${list('Opponent', m.teams.opp, m.teams.mine)}</div>`;
+}
+
+function monCard(p, mode, ann){
+  const c = TYPE_COLORS[p.types[0]];
+  return `<article class="mon"><header><h3>${dn(p.name)}</h3>${ann ? `<span class="role">${ann.role}</span>` : ''}${mode && !mode.plain ? rankBadge(p) : ''}</header>
+    <div class="mon-body"><div><div class="pills"><span>${p.ability}</span><span>${p.item}<img class="iicon" src="${itemUrl(p.item)}" alt="" onerror="this.remove()"></span></div>
+    <ul>${p.moves.map(([n, t]) => `<li>${chip(t)}${n}${ann && ann.blue.has(n) ? star('b', 'Good support move') : ''}${ann && ann.yellow.has(n) ? star('y', 'Priority attack') : ''}</li>`).join('')}</ul></div>
+    <div class="side"><span class="chips">${p.types.map(chip).join('')}</span><div class="sprite" style="background:radial-gradient(circle at 35% 30%,#fff8,${c})"><span>${p.name[0]}</span><img src="${spriteUrl(p)}" alt="${dn(p.name)}" onload="this.parentNode.classList.add('ok')" onerror="this.remove()"></div></div></div></article>`;
+}
+function renderTeams(el, m, mode){
+  const N = !mode.plain && OPP_NOTES[m.id];
+  const col = (label, team, opp) => `<section class="team"><h2>${label}</h2><div class="roster">${team.map((p, i) => monCard(shown(p, mode), mode, opp && N ? {role:N.roles[i], blue:new Set(N.blue), yellow:new Set(N.yellow)} : null)).join('')}</div></section>`;
+  el.innerHTML = `${N ? `<p class="note keynote">${star('b', '')} Good support move &nbsp; ${star('y', '')} Priority attack &nbsp; (marked on the opponent\u2019s moves)</p>` : ''}<div class="teams">${col('Your team', m.teams.mine)}${col('Opponent', m.teams.opp, true)}</div>`;
+}
+
+/* Each view gets (container element, matchup object). Add a tab by adding an entry. */
+/* Plain = original team-sheet look (no megas). Specialized = everything, plus extra tabs. */
+const MODES = {
+  plain:       {label:'Plain Visualization',       plain:true,  views:[{id:'main', label:'Main', render:renderMain}]},
+  specialized: {label:'Specialized Visualization', plain:false, views:[{id:'main', label:'Main', render:renderMain}, {id:'types', label:'Type matchups', render:renderTypes}, {id:'nodes', label:'Synergy Chart', render:renderNodes}]}
+};
+
+function renderMain(el, m, mode){
+  if (m.teams) return renderTeams(el, m, mode);
+  el.innerHTML = `<svg viewBox="0 0 800 450" preserveAspectRatio="xMidYMid meet" role="img" aria-label="${m.title} main view placeholder">
+    <rect x="60" y="40" width="680" height="340" rx="6" fill="none" stroke="var(--line)" stroke-width="2" stroke-dasharray="8 8"/>
+    <text x="400" y="215" text-anchor="middle" font-size="22">Main view for ${m.title}</text>
+    <text x="400" y="245" text-anchor="middle" font-size="15">Data goes here.</text></svg>`;
+}
+function renderNodeLink(el, m){
+  const n = 6, cx = 400, cy = 205, r = 120;
+  const pts = Array.from({length:n}, (_, i) => [cx + r*Math.cos(i*2*Math.PI/n - Math.PI/2), cy + r*Math.sin(i*2*Math.PI/n - Math.PI/2)]);
+  let links = '';
+  for (let i = 0; i < n; i++) for (let j = i+1; j < n; j++)
+    if ((j-i) === 1 || (j-i) === 3) links += `<line x1="${pts[i][0]}" y1="${pts[i][1]}" x2="${pts[j][0]}" y2="${pts[j][1]}" stroke="var(--line)" stroke-width="2"/>`;
+  el.innerHTML = `<svg viewBox="0 0 800 450" preserveAspectRatio="xMidYMid meet" role="img" aria-label="${m.title} node-link view placeholder">
+    ${links}${pts.map(p => `<circle cx="${p[0]}" cy="${p[1]}" r="16" fill="var(--surface)" stroke="var(--blue)" stroke-width="3"/>`).join('')}
+    <text x="400" y="405" text-anchor="middle" font-size="18">Node-link view for ${m.title}. Data goes here.</text></svg>`;
+}
+
+/* ---------- Router: #  |  #plain  |  #plain-3  |  #specialized ---------- */
+const app = document.getElementById('app');
+let currentTab = 'main';
+
+function route(){
+  const h = location.hash.slice(1);
+  const mm = /^(plain|specialized)-(\d+)$/.exec(h);
+  if (mm && MATCHUPS[mm[2]-1]) return showMatchup(+mm[2], mm[1]);
+  if (h === 'plain' || h === 'specialized') return showList(h);
+  showHub();
+}
+
+function showHub(){
+  document.title = 'Pokémon matchup visualizations';
+  app.innerHTML = `<main class="hub">
+    <div class="hub-title">Pokémon matchup<br>visualizations</div>
+    <a class="half plain" href="#plain"><h2>Plain Visualization</h2><p>Browse the ten matchups one at a time.</p></a>
+    <a class="half spec" href="#specialized"><h2>Specialized Visualization</h2><p>Custom views built for specific questions.</p></a>
+    <svg class="ball" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="46" fill="#fff"/><path d="M4 50a46 46 0 0 1 92 0z" fill="#E3350D"/><rect x="4" y="45" width="92" height="10" fill="#222"/><circle cx="50" cy="50" r="46" fill="none" stroke="#222" stroke-width="5"/><circle cx="50" cy="50" r="15" fill="#fff" stroke="#222" stroke-width="5"/><circle cx="50" cy="50" r="7" fill="#fff" stroke="#222" stroke-width="2"/></svg></main>`;
+}
+
+function showList(mode = 'plain'){
+  document.title = MODES[mode].label;
+  app.innerHTML = `<main class="page">
+    <div class="bar"><a class="btn" href="#">Back</a><div class="mid"><h1>${MODES[mode].label}</h1></div><span></span></div>
+    <nav class="grid" aria-label="Matchups">${MATCHUPS.map(m => `<a class="tile" href="#${mode}-${m.id}">${m.title}</a>`).join('')}</nav></main>`;
+}
+
+function showSpecialized(){
+  document.title = 'Specialized Visualization';
+  app.innerHTML = `<main class="page">
+    <div class="bar"><a class="btn" href="#">Back</a><div class="mid"><h1>Specialized Visualization</h1></div><span></span></div>
+    <div class="soon"><h2>Nothing here yet</h2><p>Specialized views will be added after the plain visualizations.</p></div></main>`;
+}
+
+function showMatchup(id, mode = 'plain'){
+  const views = MODES[mode].views;
+  const m = MATCHUPS[id-1], prev = MATCHUPS[id-2], next = MATCHUPS[id];
+  document.title = m.title;
+  const nav = (t, label, dir) => t
+    ? `<a class="btn" href="#${mode}-${t.id}" aria-label="${dir} matchup">${label}</a>`
+    : `<span class="btn" aria-disabled="true" aria-label="No ${dir} matchup">${label}</span>`;
+  app.innerHTML = `<main class="page">
+    <div class="bar">
+      <div>${nav(prev, '‹ Previous', 'previous')}</div>
+      <div class="mid"><h1>${m.title}</h1><a href="#${mode}">All matchups</a></div>
+      <div class="right">${nav(next, 'Next ›', 'next')}</div>
+    </div>
+    ${views.length > 1 ? `<div class="tabs" role="tablist">${views.map(v => `<button class="tab" role="tab" id="tab-${v.id}" data-view="${v.id}">${v.label}</button>`).join('')}</div>` : ''}
+    <div class="stage" id="stage" role="tabpanel"></div></main>`;
+  const stage = document.getElementById('stage');
+  const select = viewId => {
+    const view = views.find(v => v.id === viewId) || views[0];
+    currentTab = view.id;
+    app.querySelectorAll('.tab').forEach(t => t.setAttribute('aria-selected', t.dataset.view === view.id));
+    stage.setAttribute('aria-labelledby', 'tab-' + view.id);
+    view.render(stage, m, MODES[mode]);
+  };
+  app.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => select(t.dataset.view)));
+  select(currentTab);
+}
+
+document.addEventListener('keydown', e => {
+  const mm = /^(plain|specialized)-(\d+)$/.exec(location.hash.slice(1));
+  if (!mm || e.target.closest('input,textarea')) return;
+  const id = +mm[2] + (e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0);
+  if (id !== +mm[2] && MATCHUPS[id-1]) location.hash = mm[1] + '-' + id;
+});
+window.addEventListener('hashchange', route);
+route();
+</script>
+</body>
+</html>
