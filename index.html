@@ -112,6 +112,39 @@ a{color:inherit;text-decoration:none}
 .role{font:500 .68rem var(--body);background:#ffffff26;color:#fff;border:1px solid #fff8;border-radius:999px;padding:.05rem .45rem;white-space:nowrap}
 .star{font-size:.9rem;line-height:1;margin-left:.3rem}.star.b{color:#2F7DE1}.star.y{color:#E8A800}
 .keynote .star{margin:0 .15rem}.keynote{padding:.2rem .9rem 0}
+.tester{padding:1rem 1.25rem 1.5rem}
+.tester .note{margin-bottom:.6rem}
+.legend2{display:block;margin-top:.3rem;font-size:.85rem}
+.swatch{display:inline-block;width:.9rem;height:.9rem;border-radius:3px;vertical-align:-.1rem;margin:0 .3rem 0 .8rem;border:3px solid #FFC400;background:#fff}.swatch:first-child{margin-left:0}
+.swatch.x{border:0;background:none;color:#E01B1B;font:800 1.3rem/1 var(--head);width:auto;height:auto;margin-left:.8rem}
+.tctl{display:flex;gap:.4rem;margin-bottom:.8rem}
+.field{display:grid;grid-template-columns:auto minmax(0,1fr) 3.5rem minmax(0,1fr) auto;gap:1rem;align-items:center;padding:1rem;border-radius:14px;background:linear-gradient(90deg,#2f5f8f14,transparent 35%,transparent 65%,#d8372b14);border:2px dashed var(--line)}
+.vs{font:800 1.6rem var(--head);color:var(--muted);text-align:center}
+.tcol{display:flex;flex-direction:column;gap:.5rem}
+.zcol{display:grid;gap:1rem;align-content:center}
+.zone{min-height:18rem;display:grid;align-items:start;justify-items:center;border:2px dashed var(--line);border-radius:12px;padding:.5rem;transition:background .12s,border-color .12s}
+.zone.full{border-style:solid;border-color:transparent;padding:0;min-height:0}
+.zone.over{background:#F2C23033;border-color:#F2C230}
+.zhint{align-self:center;color:var(--muted);text-align:center;padding:2rem 1rem}
+.tcard{position:relative;width:100%;max-width:23rem;background:#8F1D2C;color:#fff;border-radius:6px 20px 6px 6px;padding:.7rem .75rem;cursor:grab}
+.tx{position:absolute;top:.3rem;right:.5rem;border:0;background:#ffffff30;color:#fff;border-radius:50%;width:1.5rem;height:1.5rem;font-size:1rem;line-height:1;cursor:pointer}
+.thead2{display:flex;align-items:center;gap:.7rem;margin-bottom:.45rem;padding-right:1.6rem}
+.thead2 strong{font:800 1.05rem var(--head);text-transform:uppercase}
+.thead2 .chips{justify-content:flex-start;margin-top:.25rem}
+.tmoves{list-style:none;margin:.5rem 0 0;padding:0;display:grid;gap:.35rem}
+.tm{display:flex;align-items:center;justify-content:space-between;gap:.5rem;background:#fff;color:#2b1418;border:3px solid transparent;border-radius:6px;padding:.25rem .45rem;font:500 .85rem var(--body)}
+.tmname{display:flex;align-items:center;gap:.4rem;min-width:0}
+.tmtags{display:flex;align-items:center;gap:.4rem}
+.tm.strong{border-color:#FFC400;background:#FFFBEA;box-shadow:0 0 0 2px #FFE27A80,0 0 12px #FFC400aa}
+.good{display:inline-flex;align-items:center;gap:.2rem;color:#8a5a00;font-weight:800;font-size:.8rem;white-space:nowrap}
+.nope{display:inline-flex;position:relative}
+.nope .sprite{opacity:.8}
+.nope::after{content:"\00d7";position:absolute;inset:-4px;display:grid;place-items:center;font:800 2.1rem/1 var(--head);color:#E01B1B;text-shadow:0 0 2px #fff,0 0 4px #fff,0 0 6px #fff}
+.mini .sprite{width:28px;height:28px;border-width:2px;font-size:.8rem}
+.tp{display:grid;justify-items:center;gap:.15rem;width:5.2rem;padding:.3rem .1rem;border:2px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink);font:500 .7rem var(--body);cursor:grab}
+.tp:hover{border-color:var(--ink)}.tp.used{opacity:.4}
+.tp .sprite{width:52px;height:52px;border-width:2px;font-size:1.1rem}
+@media (max-width:1000px){.field{grid-template-columns:1fr}.tcol{flex-direction:row;flex-wrap:wrap}.zone{min-height:0}.vs{padding:.2rem}}
 .rank.low{background:#ffffff40;color:#fff}
 .nctl{display:flex;flex-wrap:wrap;align-items:center;gap:.4rem;padding:.8rem 1rem 0}
 .nctl>span{color:var(--muted);font-size:.9rem;margin-right:.2rem}
@@ -596,11 +629,96 @@ function renderTeams(el, m, mode){
   el.innerHTML = `${N ? `<p class="note keynote">${star('b', '')} Good support move &nbsp; ${star('y', '')} Priority attack &nbsp; (marked on the opponent\u2019s moves)</p>` : ''}<div class="teams">${col('Your team', m.teams.mine)}${col('Opponent', m.teams.opp, true)}</div>`;
 }
 
+/* ---- Matchup Tester tab: drag two Pokemon onto the field and see which moves work on the other one ---- */
+const effAbility = p => p.ability.split(' / ').pop(); /* megas show "pre-mega / mega", the mega ability is the one in effect */
+const SELF_STATUS = new Set(['Protect','Detect','Spiky Shield','Wide Guard','Quick Guard','Tailwind','Calm Mind','Swords Dance','Nasty Plot','Bulk Up','Dragon Dance','Coil','Follow Me','Rage Powder','Helping Hand','Substitute','Aurora Veil','Light Screen','Trick Room','Life Dew','Roost','Baton Pass','Coaching']);
+const OPP_STATUS = new Set(['Encore','Disable','Leech Seed','Hypnosis','Sleep Powder','Will-O-Wisp','Yawn','Parting Shot','Psych Up']);
+const PRIORITY_MOVES = new Set(['Fake Out','Feint','Sucker Punch','Aqua Jet','Shadow Sneak','Extreme Speed','Quick Attack','Jet Punch']);
+const testType = (p, mv) => { const t = moveType(p, mv); return effAbility(p) === 'Pixilate' && t === 'Normal' ? 'Fairy' : t; };
+/* kind: self (never flagged), blocked (cannot affect: reason says why), hit (mult = damage multiplier, null for a status move) */
+function evalMove(att, mv, def, ally){ /* ally: the Pokemon beside the defender on its side, if any */
+  const name = mv[0], type = testType(att, mv), a = effAbility(att), d = effAbility(def);
+  if (SELF_STATUS.has(name)) return {kind:'self', type};
+  const status = OPP_STATUS.has(name);
+  const priority = PRIORITY_MOVES.has(name) || (status && a === 'Prankster') || (a === 'Gale Wings' && type === 'Flying');
+  const no = reason => ({kind:'blocked', type, reason});
+  if (priority && d === 'Armor Tail') return no('Armor Tail blocks priority moves');
+  if (priority && ally && effAbility(ally) === 'Armor Tail') return no(`${dn(ally.name)}\u2019s Armor Tail blocks priority moves on its allies`);
+  if (status) {
+    if (a === 'Prankster' && def.types.includes('Dark')) return no('Prankster status moves fail on Dark types');
+    if (name === 'Leech Seed' && def.types.includes('Grass')) return no('Grass types are immune');
+    if (name === 'Sleep Powder' && def.types.includes('Grass')) return no('Grass types are immune to powder');
+    if (name === 'Will-O-Wisp' && def.types.includes('Fire')) return no('Fire types cannot be burned');
+    if (name === 'Will-O-Wisp' && d === 'Flash Fire') return no('Flash Fire absorbs it');
+    return {kind:'hit', type, mult:null};
+  }
+  if (type === 'Ground' && d === 'Levitate') return no('Levitate');
+  if (type === 'Fire' && d === 'Flash Fire') return no('Flash Fire');
+  const mult = effect(name, type, def.types);
+  if (mult === 0) return no('No effect');
+  return {kind:'hit', type, mult};
+}
+let testMatch = 0, testSlots = [null, null, null, null], testNext = {mine:0, opp:0}; /* slots 0-1 = your team (left), 2-3 = opponent (right) */
+const slotSide = i => i < 2 ? 'mine' : 'opp';
+function renderTester(el, m){
+  if (testMatch !== m.id) { testMatch = m.id; testSlots = [null, null, null, null]; testNext = {mine:0, opp:0}; } /* each matchup starts with an empty field */
+  const pool = {};
+  m.teams.mine.forEach((p, i) => pool['mine:' + i] = p);
+  m.teams.opp.forEach((p, i) => pool['opp:' + i] = p);
+  let dragFrom = null; /* what is being dragged right now: a pool key or 'slot:N' */
+  const sideOfDrag = () => !dragFrom ? null : dragFrom.startsWith('slot:') ? slotSide(+dragFrom.slice(5)) : dragFrom.split(':')[0];
+  const draw = () => {
+    const slotMon = i => testSlots[i] ? pool[testSlots[i]] : null;
+    const tray = (team, side) => `<div class="tcol ${side}">${team.map((p, i) => { const k = side + ':' + i;
+      return `<button class="tp${testSlots.includes(k) ? ' used' : ''}" draggable="true" data-key="${k}" title="${testSlots.includes(k) ? 'Click to take off the field' : 'Drag onto the field, or click to add'}">${spriteHtml(p)}<span>${dn(p.name)}</span></button>`; }).join('')}</div>`;
+    /* one move box, checked against every Pokemon on the other side */
+    const moveBox = (att, mv, defs) => {
+      const type = testType(att, mv), res = defs.map(d => ({d, r:evalMove(att, mv, d, defs.find(x => x !== d))})), self = res.length && res[0].r.kind === 'self';
+      const strong = res.some(x => x.r.kind === 'hit' && x.r.mult >= 2);
+      const icons = self ? '' : res.map(x => x.r.kind === 'hit' && x.r.mult >= 2
+          ? `<span class="good" title="Super effective against ${dn(x.d.name)}"><span class="mini">${spriteHtml(x.d)}</span><b>${multText(x.r.mult)}</b></span>`
+          : x.r.kind === 'blocked' ? `<span class="nope" title="Cannot affect ${dn(x.d.name)}: ${x.r.reason}"><span class="mini">${spriteHtml(x.d)}</span></span>` : '').join('');
+      return `<li class="tm${strong ? ' strong' : ''}"><span class="tmname">${chip(type)}<span>${mv[0]}</span></span><span class="tmtags">${icons}</span></li>`; };
+    const card = (p, defs, i) => `<div class="tcard" draggable="true" data-slot="${i}"><button class="tx" data-clear="${i}" aria-label="Remove ${dn(p.name)} from the field">×</button>
+      <div class="thead2">${spriteHtml(p)}<div><strong>${dn(p.name)}</strong><div class="chips">${p.types.map(chip).join('')}</div></div></div>
+      <div class="pills"><span>${p.ability}</span><span>${p.item}<img class="iicon" src="${itemUrl(p.item)}" alt="" onerror="this.remove()"></span></div>
+      <ul class="tmoves">${p.moves.map(mv => moveBox(p, mv, defs)).join('')}</ul></div>`;
+    const zones = side => { const idx = side === 'mine' ? [0, 1] : [2, 3], enemy = (side === 'mine' ? [2, 3] : [0, 1]).map(slotMon).filter(Boolean);
+      return `<div class="zcol">${idx.map(i => { const p = slotMon(i); return `<div class="zone${p ? ' full' : ''}" data-slot="${i}">${p ? card(p, enemy, i) : `<div class="zhint">Drop a ${side === 'mine' ? 'Pokémon from your team' : 'Pokémon from the opponent’s team'}</div>`}</div>`; }).join('')}</div>`; };
+    el.innerHTML = `<div class="tester">
+      <p class="note">Drag up to two Pokémon from each team onto the field, or click one to add it (click again to remove it). <span class="legend2"><i class="swatch gold"></i>Super effective, with the Pokémon it is good against <i class="swatch x">\u00d7</i>Cannot affect that Pokémon (self-targeting moves like Protect never get one)</span></p>
+      <div class="tctl"><button class="cbtn" data-act="clear">Clear field</button></div>
+      <div class="field">${tray(m.teams.mine, 'mine')}${zones('mine')}<div class="vs">VS</div>${zones('opp')}${tray(m.teams.opp, 'opp')}</div></div>`;
+    const place = (k, i) => { if (k) testSlots = testSlots.map(x => x === k ? null : x); testSlots[i] = k; draw(); };
+    el.querySelectorAll('.tp').forEach(b => {
+      b.ondragstart = e => { dragFrom = b.dataset.key; e.dataTransfer.setData('text/plain', dragFrom); e.dataTransfer.effectAllowed = 'move'; };
+      b.ondragend = () => { dragFrom = null; };
+      b.onclick = () => { const k = b.dataset.key, side = k.split(':')[0], at = testSlots.indexOf(k);
+        if (at >= 0) return place(null, at);
+        const range = side === 'mine' ? [0, 1] : [2, 3]; let i = range.find(j => !testSlots[j]);
+        if (i === undefined) { i = range[testNext[side]]; testNext[side] = 1 - testNext[side]; } place(k, i); };
+    });
+    el.querySelectorAll('.tcard').forEach(c => { c.ondragstart = e => { dragFrom = 'slot:' + c.dataset.slot; e.dataTransfer.setData('text/plain', dragFrom); e.dataTransfer.effectAllowed = 'move'; };
+      c.ondragend = () => { dragFrom = null; }; });
+    el.querySelectorAll('.zone').forEach(z => {
+      const i = +z.dataset.slot, ok = () => sideOfDrag() === slotSide(i);
+      z.ondragover = e => { if (ok()) { e.preventDefault(); z.classList.add('over'); } };
+      z.ondragleave = () => z.classList.remove('over');
+      z.ondrop = e => { e.preventDefault(); if (!ok()) return;
+        if (dragFrom.startsWith('slot:')) { const j = +dragFrom.slice(5); [testSlots[i], testSlots[j]] = [testSlots[j], testSlots[i]]; draw(); }
+        else place(dragFrom, i); dragFrom = null; };
+    });
+    el.querySelectorAll('.tx').forEach(b => b.onclick = () => place(null, +b.dataset.clear));
+    el.querySelector('[data-act=clear]').onclick = () => { testSlots = [null, null, null, null]; testNext = {mine:0, opp:0}; draw(); };
+  };
+  draw();
+}
+
 /* Each view gets (container element, matchup object). Add a tab by adding an entry. */
 /* Plain = original team-sheet look (no megas). Specialized = everything, plus extra tabs. */
 const MODES = {
   plain:       {label:'Plain Visualization',       plain:true,  views:[{id:'main', label:'Main', render:renderMain}]},
-  specialized: {label:'Specialized Visualization', plain:false, views:[{id:'main', label:'Main', render:renderMain}, {id:'types', label:'Type matchups', render:renderTypes}, {id:'nodes', label:'Synergy Chart', render:renderNodes}]}
+  specialized: {label:'Specialized Visualization', plain:false, views:[{id:'main', label:'Main', render:renderMain}, {id:'types', label:'Type matchups', render:renderTypes}, {id:'nodes', label:'Synergy Chart', render:renderNodes}, {id:'tester', label:'Matchup Tester', render:renderTester}]}
 };
 
 function renderMain(el, m, mode){
